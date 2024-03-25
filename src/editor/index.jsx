@@ -1,10 +1,34 @@
 /* eslint-disable react/prop-types */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 
-import { Editor, Transforms, Element, createEditor } from 'slate'
+import { Editor, Transforms, createEditor, Node } from 'slate'
 import { Slate, Editable, withReact } from 'slate-react'
 
-const CustomeEditor = {
+// 定义一个参数为 `value` 返回值是纯文本的序列化函数。
+const serialize = value => {
+	return (
+		value
+			// 返回这个 value 中每一个段落中的子节点的字符串内容。
+			.map(n => Node.string(n))
+			// 用换行符（用换行符来区分段落）来连接他们。
+			.join('\n')
+	)
+}
+// 定义一个参数是字符串返回值是 `value` 的反序列化函数
+const deserialize = string => {
+	if (!string)
+		return {
+			children: [{ text: '' }],
+		}
+	// 分隔字符串，返回一个包含value的child数组。
+	return string.split('\n').map(line => {
+		return {
+			children: [{ text: line }],
+		}
+	})
+}
+
+const CustomEditor = {
 	isBoldMarkActive(editor) {
 		const marks = Editor.marks(editor)
 		return marks ? marks.bold === true : false
@@ -16,7 +40,7 @@ const CustomeEditor = {
 		return match
 	},
 	toggleBoldMarks(editor) {
-		const isActive = CustomeEditor.isBoldMarkActive(editor)
+		const isActive = CustomEditor.isBoldMarkActive(editor)
 		if (isActive) {
 			Editor.removeMark(editor, 'bold')
 		} else {
@@ -24,7 +48,7 @@ const CustomeEditor = {
 		}
 	},
 	toggleCodeBlock(editor) {
-		const isActive = CustomeEditor.isCodeBlockActive(editor)
+		const isActive = CustomEditor.isCodeBlockActive(editor)
 		Transforms.setNodes(
 			editor,
 			{ type: isActive ? null : 'code' },
@@ -33,15 +57,11 @@ const CustomeEditor = {
 	},
 }
 export const EditorBox = () => {
-	const initialValue = useMemo(() => {
-		JSON.stringify(localStorage.getItem('content')) || [
-			{
-				type: 'paragraph',
-				children: [{ text: 'A line of text in a paragraph.' }],
-			},
-		]
-	}, [])
+	// 创建初始化数据
+	const [value, setValue] = useState(deserialize(localStorage.getItem('content')) || '')
+	// 创建一个Editor对象
 	const [editor] = useState(() => withReact(createEditor()))
+
 	const DefaultElement = props => {
 		return <p {...props.attributes}>{props.children}</p>
 	}
@@ -69,13 +89,22 @@ export const EditorBox = () => {
 				return <DefaultElement {...props} />
 		}
 	}, [])
+	// 渲染Slate上下文
 	return (
-		<Slate editor={editor} initialValue={initialValue}>
+		<Slate
+			editor={editor}
+			initialValue={value}
+			onChange={value => {
+				setValue(value)
+				// 序列化 `value` 并将产生的字符串保存到 Local Storage。
+				localStorage.setItem('content', serialize(value))
+			}}
+		>
 			<div>
 				<button
 					onMouseDown={event => {
 						event.preventDefault()
-						CustomeEditor.toggleBoldMarks(editor)
+						CustomEditor.toggleBoldMarks(editor)
 					}}
 				>
 					Bold
@@ -83,12 +112,13 @@ export const EditorBox = () => {
 				<button
 					onMouseDown={event => {
 						event.preventDefault()
-						CustomeEditor.toggleCodeBlock(editor)
+						CustomEditor.toggleCodeBlock(editor)
 					}}
 				>
 					code Block
 				</button>
 			</div>
+			{/* 在上下文中，添加可编辑组件 */}
 			<Editable
 				renderElement={renderElement}
 				renderLeaf={renderLeaf}
@@ -99,7 +129,7 @@ export const EditorBox = () => {
 					switch (event.key) {
 						case '`': {
 							event.preventDefault()
-							// CustomeEditor.toggleCodeBlock(editor)
+							// CustomEditor.toggleCodeBlock(editor)
 							const [match] = Editor.nodes(editor, {
 								match: n => n.type === 'code',
 							})
@@ -112,7 +142,7 @@ export const EditorBox = () => {
 						}
 						case 'b': {
 							event.preventDefault()
-							CustomeEditor.toggleBoldMarks(editor)
+							CustomEditor.toggleBoldMarks(editor)
 							// const marks = Editor.marks(editor)
 							// const isActive = marks ? marks.bold === true : false
 							// if (isActive) {
